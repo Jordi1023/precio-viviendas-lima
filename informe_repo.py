@@ -1,0 +1,103 @@
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+from dotenv import load_dotenv
+from github import Github, GithubException
+
+load_dotenv()
+
+TOKEN = os.getenv("GH_TOKEN")
+REPO_NAME = os.getenv("GITHUB_REPO")
+
+if not TOKEN:
+    raise EnvironmentError("Variable GH_TOKEN no encontrada.")
+if not REPO_NAME:
+    raise EnvironmentError("Variable GITHUB_REPO no encontrada.")
+
+def separador(titulo: str) -> None:
+    ancho = 70
+    print(f"\n{'-' * ancho}")
+    print(f"  {titulo}")
+    print(f"{'-' * ancho}")
+
+def formatear_numero(valor: Any, decimales: int = 2) -> str:
+    if isinstance(valor, (int, float)):
+        return f"{valor:,.{decimales}f}"
+    return "N/A"
+
+def mostrar_metricas_locales() -> None:
+    ruta_metricas = Path("outputs/metrics.json")
+    if not ruta_metricas.exists():
+        print("  No se encontró outputs/metrics.json.")
+        print("  Ejecuta: python -m scripts.entrenar")
+        return
+    with open(ruta_metricas, "r", encoding="utf-8") as archivo:
+        metricas = json.load(archivo)
+    print(f"  MAE:   {formatear_numero(metricas.get('mae'))} USD")
+    print(f"  R2:    {formatear_numero(metricas.get('r2'), 4)}")
+    print(f"  Train: {metricas.get('n_train', 'N/A')} muestras")
+    print(f"  Test:  {metricas.get('n_test', 'N/A')} muestras")
+
+def main() -> None:
+    github_client = Github(TOKEN)
+    try:
+        repo = github_client.get_repo(REPO_NAME)
+    except GithubException as exc:
+        raise RuntimeError("No se pudo acceder al repositorio.") from exc
+
+    print(f"\n{'=' * 70}")
+    print("  INFORME DEL REPOSITORIO")
+    print(f"  Generado: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"{'=' * 70}")
+
+    separador("INFORMACIÓN GENERAL")
+    print(f"  Repositorio:     {repo.full_name}")
+    print(f"  Descripción:     {repo.description}")
+    print(f"  Rama default:    {repo.default_branch}")
+    print(f"  Estrellas:       {repo.stargazers_count}")
+    print(f"  Forks:           {repo.forks_count}")
+    print(f"  Issues abiertos: {repo.open_issues_count}")
+
+    separador("ÚLTIMOS 5 COMMITS")
+    commits = list(repo.get_commits()[:5])
+    for commit in commits:
+        sha = commit.sha[:7]
+        mensaje = commit.commit.message.split("\n")[0]
+        autor = commit.commit.author.name
+        fecha = commit.commit.author.date.strftime("%Y-%m-%d")
+        print(f"  [{sha}] {fecha} - {autor}")
+        print(f"         {mensaje}")
+
+    separador("ISSUES ABIERTOS")
+    issues = [i for i in repo.get_issues(state="open") if i.pull_request is None]
+    if not issues:
+        print("  No hay issues abiertos.")
+    else:
+        for issue in issues:
+            etiquetas = ", ".join(l.name for l in issue.labels) or "sin etiqueta"
+            fecha = issue.created_at.strftime("%Y-%m-%d")
+            print(f"  #{issue.number} {issue.title}")
+            print(f"      Etiquetas: {etiquetas} | Abierto: {fecha}")
+
+    separador("ÚLTIMAS EJECUCIONES DE WORKFLOWS")
+    for workflow in repo.get_workflows():
+        runs = list(workflow.get_runs()[:2])
+        if not runs:
+            continue
+        print(f"\n  Workflow: {workflow.name}")
+        for run in runs:
+            estado = run.conclusion or run.status
+            marca = "[OK]" if estado == "success" else "[X]" if estado == "failure" else "[...]"
+            fecha = run.created_at.strftime("%Y-%m-%d %H:%M")
+            print(f"    {marca} Run #{run.run_number} - {estado} - {fecha} - rama: {run.head_branch}")
+
+    separador("MÉTRICAS LOCALES DEL ÚLTIMO ENTRENAMIENTO")
+    mostrar_metricas_locales()
+
+    print(f"\n{'=' * 70}\n")
+    github_client.close()
+
+if __name__ == "__main__":
+    main()
