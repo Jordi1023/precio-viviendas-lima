@@ -1,4 +1,5 @@
 # Módulo de preprocesamiento para el dataset de viviendas en Lima
+# Módulo de entrenamiento y evaluación del modelo RandomForest
 from typing import List, Tuple
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder, StandardScaler
