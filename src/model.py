@@ -1,3 +1,4 @@
+# Módulo de entrenamiento y evaluación del modelo RandomForest
 import json
 from pathlib import Path
 from typing import Dict, Tuple
